@@ -295,3 +295,123 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+function GeneratorPanel({ onUse }: { onUse: (pw: string) => void }) {
+  const [opts, setOpts] = useState<GenOptions>({
+    length: 20,
+    lower: true,
+    upper: true,
+    digits: true,
+    symbols: true,
+    excludeAmbiguous: false,
+  });
+  const [generated, setGenerated] = useState<string>(() =>
+    generatePassword({ length: 20, lower: true, upper: true, digits: true, symbols: true, excludeAmbiguous: false })
+  );
+  const [copied, setCopied] = useState(false);
+
+  const regen = (next: GenOptions = opts) => {
+    setGenerated(generatePassword(next));
+    setCopied(false);
+  };
+  const update = <K extends keyof GenOptions>(key: K, value: GenOptions[K]) => {
+    const next = { ...opts, [key]: value };
+    setOpts(next);
+    regen(next);
+  };
+  const copy = async () => {
+    if (!generated) return;
+    await navigator.clipboard.writeText(generated);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const toggles: { key: keyof GenOptions; label: string; color: string }[] = [
+    { key: "lower", label: "a-z", color: "var(--cyan)" },
+    { key: "upper", label: "A-Z", color: "var(--violet)" },
+    { key: "digits", label: "0-9", color: "var(--warning)" },
+    { key: "symbols", label: "!@#", color: "var(--magenta)" },
+  ];
+
+  return (
+    <section className="mt-6 rounded-lg border border-primary/40 bg-card/60 backdrop-blur p-5 md:p-6">
+      <h2 className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-4">
+        <Wand2 size={14} className="text-primary" />
+        Secure Password Generator
+      </h2>
+
+      <div className="flex items-center gap-2 rounded-md border border-border bg-input/60 px-3 py-2.5">
+        <code className="flex-1 font-mono text-sm md:text-base text-foreground break-all">
+          {generated || "—"}
+        </code>
+        <button
+          onClick={() => regen()}
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition"
+          aria-label="Regenerate"
+        >
+          <RefreshCw size={16} />
+        </button>
+        <button
+          onClick={copy}
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition"
+          aria-label="Copy"
+        >
+          {copied ? <Check size={16} className="text-primary" /> : <Copy size={16} />}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div>
+          <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+            <span>Length</span>
+            <span className="text-primary font-mono">{opts.length}</span>
+          </div>
+          <input
+            type="range"
+            min={6}
+            max={64}
+            value={opts.length}
+            onChange={(e) => update("length", Number(e.target.value))}
+            className="w-full accent-[var(--primary)]"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {toggles.map((t) => {
+            const active = opts[t.key] as boolean;
+            return (
+              <button
+                key={t.key}
+                onClick={() => update(t.key, !active as never)}
+                className="px-2.5 py-1.5 rounded-md border text-xs font-mono transition"
+                style={{
+                  borderColor: active ? t.color : "var(--border)",
+                  color: active ? t.color : "var(--muted-foreground)",
+                  boxShadow: active ? `0 0 8px ${t.color}` : undefined,
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+          <label className="ml-1 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={opts.excludeAmbiguous}
+              onChange={(e) => update("excludeAmbiguous", e.target.checked)}
+              className="accent-[var(--primary)]"
+            />
+            Exclude ambiguous
+          </label>
+        </div>
+      </div>
+
+      <button
+        onClick={() => generated && onUse(generated)}
+        disabled={!generated}
+        className="mt-4 inline-flex items-center gap-2 text-xs font-mono px-3 py-2 rounded-md border border-primary/60 text-primary hover:bg-primary/10 transition disabled:opacity-40"
+      >
+        <ArrowDown size={14} /> Test this password
+      </button>
+    </section>
+  );
+}
