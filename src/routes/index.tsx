@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Shield, Eye, EyeOff, AlertTriangle, CheckCircle2, Terminal, Zap, Lock } from "lucide-react";
+import {
+  Shield, Eye, EyeOff, AlertTriangle, CheckCircle2, Terminal, Zap, Lock,
+  Wand2, RefreshCw, Copy, Check, ArrowDown,
+} from "lucide-react";
 import { analyze } from "@/lib/password-analyzer";
+import { generatePassword, type GenOptions } from "@/lib/password-generator";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,12 +31,35 @@ const SCORE_COLORS = [
   "oklch(0.82 0.21 155)",
 ];
 
+const COMPOSITION_COLORS: Record<string, string> = {
+  lowercase: "var(--cyan)",
+  uppercase: "var(--violet)",
+  digits: "var(--warning)",
+  symbols: "var(--magenta)",
+};
+
+function attackColor(seconds: number): string {
+  if (seconds < 1) return "var(--destructive)";
+  if (seconds < 3600) return "oklch(0.7 0.22 40)";
+  if (seconds < 86400 * 30) return "var(--warning)";
+  if (seconds < 86400 * 365 * 10) return "var(--cyan)";
+  return "var(--primary)";
+}
+
 function Index() {
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
   const result = useMemo(() => analyze(pw), [pw]);
   const hasInput = pw.length > 0;
   const scoreColor = SCORE_COLORS[result.score];
+  const [copied, setCopied] = useState(false);
+
+  const copyPw = async () => {
+    if (!pw) return;
+    await navigator.clipboard.writeText(pw);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <main className="min-h-screen px-4 py-10 md:py-16">
@@ -81,7 +108,29 @@ function Index() {
           <p className="mt-3 text-[11px] text-muted-foreground flex items-center gap-1.5">
             <AlertTriangle size={12} /> Processed locally. Never stored or transmitted.
           </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={copyPw}
+              disabled={!pw}
+              className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded border border-border hover:border-primary text-muted-foreground hover:text-primary transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPw("")}
+              disabled={!pw}
+              className="text-[11px] px-2.5 py-1.5 rounded border border-border hover:border-destructive text-muted-foreground hover:text-destructive transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Clear
+            </button>
+          </div>
         </section>
+
+        {/* Password Generator */}
+        <GeneratorPanel onUse={(p) => setPw(p)} />
 
         {hasInput && (
           <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -118,16 +167,21 @@ function Index() {
               <div className="space-y-2.5">
                 {result.composition.map((c) => {
                   const pct = Math.min(100, (c.count / Math.max(1, result.length)) * 100);
+                  const color = COMPOSITION_COLORS[c.type] ?? "var(--primary)";
                   return (
                     <div key={c.type}>
                       <div className="flex justify-between text-xs font-mono text-muted-foreground mb-1">
                         <span className="uppercase tracking-wider">{c.type}</span>
-                        <span className={c.count > 0 ? "text-primary" : ""}>{c.count}</span>
+                        <span style={{ color: c.count > 0 ? color : undefined }}>{c.count}</span>
                       </div>
                       <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-primary transition-all duration-500"
-                          style={{ width: `${pct}%`, boxShadow: c.count > 0 ? "0 0 6px var(--primary)" : undefined }}
+                          className="h-full transition-all duration-500"
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: color,
+                            boxShadow: c.count > 0 ? `0 0 6px ${color}` : undefined,
+                          }}
                         />
                       </div>
                     </div>
@@ -155,13 +209,7 @@ function Index() {
                           {c.guessesPerSec.toExponential(0)}
                         </td>
                         <td className="py-2.5 text-right">
-                          <span
-                            style={{
-                              color: c.seconds < 60 ? SCORE_COLORS[0] : c.seconds < 86400 ? SCORE_COLORS[2] : SCORE_COLORS[4],
-                            }}
-                          >
-                            {c.display}
-                          </span>
+                          <span style={{ color: attackColor(c.seconds) }}>{c.display}</span>
                         </td>
                       </tr>
                     ))}
