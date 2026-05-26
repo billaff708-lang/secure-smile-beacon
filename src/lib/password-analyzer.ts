@@ -131,6 +131,9 @@ export function analyze(pw: string): Analysis {
     { scenario: "Offline bcrypt (10k/s)", guessesPerSec: 1e4 },
     { scenario: "Offline SHA-256 GPU (1e10/s)", guessesPerSec: 1e10 },
     { scenario: "Massive cluster (1e12/s)", guessesPerSec: 1e12 },
+    { scenario: "Dictionary + rules (1e6/s)", guessesPerSec: 1e6 },
+    { scenario: "Rainbow tables (MD5, 1e11/s)", guessesPerSec: 1e11 },
+    { scenario: "Nation-state ASIC (1e14/s)", guessesPerSec: 1e14 },
   ];
   const crackTimes = scenarios.map((s) => {
     const seconds = guesses / s.guessesPerSec;

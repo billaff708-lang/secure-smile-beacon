@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Shield, Eye, EyeOff, AlertTriangle, CheckCircle2, Terminal, Zap, Lock } from "lucide-react";
+import {
+  Shield, Eye, EyeOff, AlertTriangle, CheckCircle2, Terminal, Zap, Lock,
+  Wand2, RefreshCw, Copy, Check, ArrowDown,
+} from "lucide-react";
 import { analyze } from "@/lib/password-analyzer";
+import { generatePassword, type GenOptions } from "@/lib/password-generator";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,12 +31,35 @@ const SCORE_COLORS = [
   "oklch(0.82 0.21 155)",
 ];
 
+const COMPOSITION_COLORS: Record<string, string> = {
+  lowercase: "var(--cyan)",
+  uppercase: "var(--violet)",
+  digits: "var(--warning)",
+  symbols: "var(--magenta)",
+};
+
+function attackColor(seconds: number): string {
+  if (seconds < 1) return "var(--destructive)";
+  if (seconds < 3600) return "oklch(0.7 0.22 40)";
+  if (seconds < 86400 * 30) return "var(--warning)";
+  if (seconds < 86400 * 365 * 10) return "var(--cyan)";
+  return "var(--primary)";
+}
+
 function Index() {
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
   const result = useMemo(() => analyze(pw), [pw]);
   const hasInput = pw.length > 0;
   const scoreColor = SCORE_COLORS[result.score];
+  const [copied, setCopied] = useState(false);
+
+  const copyPw = async () => {
+    if (!pw) return;
+    await navigator.clipboard.writeText(pw);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <main className="min-h-screen px-4 py-10 md:py-16">
@@ -81,7 +108,29 @@ function Index() {
           <p className="mt-3 text-[11px] text-muted-foreground flex items-center gap-1.5">
             <AlertTriangle size={12} /> Processed locally. Never stored or transmitted.
           </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={copyPw}
+              disabled={!pw}
+              className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded border border-border hover:border-primary text-muted-foreground hover:text-primary transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPw("")}
+              disabled={!pw}
+              className="text-[11px] px-2.5 py-1.5 rounded border border-border hover:border-destructive text-muted-foreground hover:text-destructive transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Clear
+            </button>
+          </div>
         </section>
+
+        {/* Password Generator */}
+        <GeneratorPanel onUse={(p) => setPw(p)} />
 
         {hasInput && (
           <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -118,16 +167,21 @@ function Index() {
               <div className="space-y-2.5">
                 {result.composition.map((c) => {
                   const pct = Math.min(100, (c.count / Math.max(1, result.length)) * 100);
+                  const color = COMPOSITION_COLORS[c.type] ?? "var(--primary)";
                   return (
                     <div key={c.type}>
                       <div className="flex justify-between text-xs font-mono text-muted-foreground mb-1">
                         <span className="uppercase tracking-wider">{c.type}</span>
-                        <span className={c.count > 0 ? "text-primary" : ""}>{c.count}</span>
+                        <span style={{ color: c.count > 0 ? color : undefined }}>{c.count}</span>
                       </div>
                       <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-primary transition-all duration-500"
-                          style={{ width: `${pct}%`, boxShadow: c.count > 0 ? "0 0 6px var(--primary)" : undefined }}
+                          className="h-full transition-all duration-500"
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: color,
+                            boxShadow: c.count > 0 ? `0 0 6px ${color}` : undefined,
+                          }}
                         />
                       </div>
                     </div>
@@ -155,13 +209,7 @@ function Index() {
                           {c.guessesPerSec.toExponential(0)}
                         </td>
                         <td className="py-2.5 text-right">
-                          <span
-                            style={{
-                              color: c.seconds < 60 ? SCORE_COLORS[0] : c.seconds < 86400 ? SCORE_COLORS[2] : SCORE_COLORS[4],
-                            }}
-                          >
-                            {c.display}
-                          </span>
+                          <span style={{ color: attackColor(c.seconds) }}>{c.display}</span>
                         </td>
                       </tr>
                     ))}
@@ -245,5 +293,125 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-foreground mt-0.5">{value}</div>
     </div>
+  );
+}
+
+function GeneratorPanel({ onUse }: { onUse: (pw: string) => void }) {
+  const [opts, setOpts] = useState<GenOptions>({
+    length: 20,
+    lower: true,
+    upper: true,
+    digits: true,
+    symbols: true,
+    excludeAmbiguous: false,
+  });
+  const [generated, setGenerated] = useState<string>(() =>
+    generatePassword({ length: 20, lower: true, upper: true, digits: true, symbols: true, excludeAmbiguous: false })
+  );
+  const [copied, setCopied] = useState(false);
+
+  const regen = (next: GenOptions = opts) => {
+    setGenerated(generatePassword(next));
+    setCopied(false);
+  };
+  const update = <K extends keyof GenOptions>(key: K, value: GenOptions[K]) => {
+    const next = { ...opts, [key]: value };
+    setOpts(next);
+    regen(next);
+  };
+  const copy = async () => {
+    if (!generated) return;
+    await navigator.clipboard.writeText(generated);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const toggles: { key: keyof GenOptions; label: string; color: string }[] = [
+    { key: "lower", label: "a-z", color: "var(--cyan)" },
+    { key: "upper", label: "A-Z", color: "var(--violet)" },
+    { key: "digits", label: "0-9", color: "var(--warning)" },
+    { key: "symbols", label: "!@#", color: "var(--magenta)" },
+  ];
+
+  return (
+    <section className="mt-6 rounded-lg border border-primary/40 bg-card/60 backdrop-blur p-5 md:p-6">
+      <h2 className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-4">
+        <Wand2 size={14} className="text-primary" />
+        Secure Password Generator
+      </h2>
+
+      <div className="flex items-center gap-2 rounded-md border border-border bg-input/60 px-3 py-2.5">
+        <code className="flex-1 font-mono text-sm md:text-base text-foreground break-all">
+          {generated || "—"}
+        </code>
+        <button
+          onClick={() => regen()}
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition"
+          aria-label="Regenerate"
+        >
+          <RefreshCw size={16} />
+        </button>
+        <button
+          onClick={copy}
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition"
+          aria-label="Copy"
+        >
+          {copied ? <Check size={16} className="text-primary" /> : <Copy size={16} />}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div>
+          <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+            <span>Length</span>
+            <span className="text-primary font-mono">{opts.length}</span>
+          </div>
+          <input
+            type="range"
+            min={6}
+            max={64}
+            value={opts.length}
+            onChange={(e) => update("length", Number(e.target.value))}
+            className="w-full accent-[var(--primary)]"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {toggles.map((t) => {
+            const active = opts[t.key] as boolean;
+            return (
+              <button
+                key={t.key}
+                onClick={() => update(t.key, !active as never)}
+                className="px-2.5 py-1.5 rounded-md border text-xs font-mono transition"
+                style={{
+                  borderColor: active ? t.color : "var(--border)",
+                  color: active ? t.color : "var(--muted-foreground)",
+                  boxShadow: active ? `0 0 8px ${t.color}` : undefined,
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+          <label className="ml-1 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={opts.excludeAmbiguous}
+              onChange={(e) => update("excludeAmbiguous", e.target.checked)}
+              className="accent-[var(--primary)]"
+            />
+            Exclude ambiguous
+          </label>
+        </div>
+      </div>
+
+      <button
+        onClick={() => generated && onUse(generated)}
+        disabled={!generated}
+        className="mt-4 inline-flex items-center gap-2 text-xs font-mono px-3 py-2 rounded-md border border-primary/60 text-primary hover:bg-primary/10 transition disabled:opacity-40"
+      >
+        <ArrowDown size={14} /> Test this password
+      </button>
+    </section>
   );
 }
