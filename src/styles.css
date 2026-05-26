@@ -80,6 +80,10 @@
   --destructive: oklch(0.65 0.24 25);
   --destructive-foreground: oklch(0.98 0 0);
   --warning: oklch(0.82 0.18 75);
+  --info: oklch(0.78 0.16 220);
+  --magenta: oklch(0.7 0.28 330);
+  --cyan: oklch(0.82 0.15 200);
+  --violet: oklch(0.68 0.22 290);
   --border: oklch(0.3 0.04 180 / 0.4);
   --input: oklch(0.22 0.025 240);
   --ring: oklch(0.82 0.21 155);
@@ -154,6 +158,10 @@
 
 @theme inline {
   --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-magenta: var(--magenta);
+  --color-cyan: var(--cyan);
+  --color-violet: var(--violet);
 }
 
 @keyframes pulse-glow {
