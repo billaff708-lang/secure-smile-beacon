@@ -14,7 +14,122 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      password_history: {
+        Row: {
+          breached: boolean
+          created_at: string
+          entropy: number
+          hash: string
+          id: string
+          label: string | null
+          length: number
+          score: number
+          user_id: string
+        }
+        Insert: {
+          breached?: boolean
+          created_at?: string
+          entropy?: number
+          hash: string
+          id?: string
+          label?: string | null
+          length?: number
+          score?: number
+          user_id: string
+        }
+        Update: {
+          breached?: boolean
+          created_at?: string
+          entropy?: number
+          hash?: string
+          id?: string
+          label?: string | null
+          length?: number
+          score?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      vault_items: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          owner_id: string
+          secret: string
+          title: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          owner_id: string
+          secret: string
+          title: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          owner_id?: string
+          secret?: string
+          title?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      vault_shares: {
+        Row: {
+          created_at: string
+          id: string
+          item_id: string
+          shared_with: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_id: string
+          shared_with: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_id?: string
+          shared_with?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_shares_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "vault_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
