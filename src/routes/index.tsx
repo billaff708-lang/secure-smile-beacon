@@ -1,11 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   Shield, Eye, EyeOff, AlertTriangle, CheckCircle2, Terminal, Zap, Lock,
-  Wand2, RefreshCw, Copy, Check, ArrowDown,
+  Wand2, RefreshCw, Copy, Check, ArrowDown, Save, LogIn, LayoutDashboard, ShieldAlert,
 } from "lucide-react";
 import { analyze } from "@/lib/password-analyzer";
 import { generatePassword, type GenOptions } from "@/lib/password-generator";
+import { useAuth } from "@/hooks/use-auth";
+import { sha256Hex } from "@/lib/hash";
+import { checkBreach } from "@/lib/breach";
+import { useServerFn } from "@tanstack/react-start";
+import { checkReuse, savePassword } from "@/lib/history.functions";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -53,6 +60,32 @@ function Index() {
   const hasInput = pw.length > 0;
   const scoreColor = SCORE_COLORS[result.score];
   const [copied, setCopied] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const checkReuseFn = useServerFn(checkReuse);
+  const saveFn = useServerFn(savePassword);
+  const qc = useQueryClient();
+  const [breachCount, setBreachCount] = useState<number | null>(null);
+  const [reused, setReused] = useState<boolean>(false);
+  const [label, setLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Debounced breach + reuse check
+  useEffect(() => {
+    if (!pw) { setBreachCount(null); setReused(false); return; }
+    const handle = setTimeout(async () => {
+      const count = await checkBreach(pw);
+      setBreachCount(count);
+      if (user) {
+        try {
+          const hash = await sha256Hex(pw);
+          const r = await checkReuseFn({ data: { hash } });
+          setReused(r.reused);
+        } catch { /* ignore */ }
+      }
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [pw, user, checkReuseFn]);
 
   const copyPw = async () => {
     if (!pw) return;
@@ -61,9 +94,44 @@ function Index() {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const save = async () => {
+    if (!user) { navigate({ to: "/auth" }); return; }
+    setSaving(true);
+    try {
+      const hash = await sha256Hex(pw);
+      await saveFn({
+        data: {
+          hash, label: label || undefined,
+          entropy: result.entropy, score: result.score, length: result.length,
+          breached: (breachCount ?? 0) > 0,
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      toast.success("Saved to history (hash only)");
+      setLabel("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <main className="min-h-screen px-4 py-10 md:py-16">
       <div className="mx-auto max-w-5xl">
+        {/* Top nav */}
+        <nav className="flex justify-end mb-4 text-xs font-mono">
+          {user ? (
+            <Link to="/dashboard" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-primary/40 text-primary hover:bg-primary/10 transition">
+              <LayoutDashboard size={12} /> Dashboard
+            </Link>
+          ) : (
+            <Link to="/auth" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-border hover:border-primary text-foreground hover:text-primary transition">
+              <LogIn size={12} /> Sign in
+            </Link>
+          )}
+        </nav>
+
         {/* Header */}
         <header className="text-center mb-10">
           <div className="inline-flex items-center gap-3 text-2xl md:text-4xl font-bold tracking-tight">
@@ -128,6 +196,58 @@ function Index() {
             </button>
           </div>
         </section>
+
+        {/* Breach + reuse alerts */}
+        {hasInput && (breachCount !== null || reused) && (
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {breachCount !== null && breachCount > 0 && (
+              <div className="rounded-md border border-destructive/60 bg-destructive/10 px-3 py-2 text-sm flex items-start gap-2">
+                <ShieldAlert size={14} className="text-destructive mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-mono text-destructive">Found in breach database</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Seen {breachCount.toLocaleString()} times in known leaks (HaveIBeenPwned). Don't use this password.
+                  </div>
+                </div>
+              </div>
+            )}
+            {breachCount === 0 && (
+              <div className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-sm flex items-start gap-2">
+                <CheckCircle2 size={14} className="text-primary mt-0.5 shrink-0" />
+                <div className="font-mono text-primary">Not in known breaches</div>
+              </div>
+            )}
+            {reused && (
+              <div className="rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm flex items-start gap-2">
+                <AlertTriangle size={14} className="text-warning mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-mono text-warning">You've used this before</div>
+                  <div className="text-[11px] text-muted-foreground">Pick something new — reuse defeats the purpose.</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Save to history */}
+        {hasInput && (
+          <div className="mt-4 rounded-md border border-border bg-card/40 p-3 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={user ? "Label (e.g. work email)" : "Sign in to save"}
+              disabled={!user}
+              className="flex-1 bg-input/60 border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary disabled:opacity-50"
+            />
+            <button
+              onClick={save}
+              disabled={saving || !pw}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded border border-primary/60 text-primary hover:bg-primary/10 text-xs font-mono uppercase tracking-widest transition disabled:opacity-50"
+            >
+              <Save size={12} /> {user ? "Save hash" : "Sign in to save"}
+            </button>
+          </div>
+        )}
 
         {/* Password Generator */}
         <GeneratorPanel onUse={(p) => setPw(p)} />
@@ -253,7 +373,7 @@ function Index() {
         )}
 
         <footer className="mt-12 text-center text-[10px] text-muted-foreground tracking-widest uppercase">
-          <span className="text-primary">●</span> Client-side cryptanalysis · No network calls
+          <span className="text-primary">●</span> Client-side cryptanalysis · Only hashes ever leave your browser
         </footer>
       </div>
     </main>
